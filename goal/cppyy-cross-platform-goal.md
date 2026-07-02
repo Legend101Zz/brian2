@@ -113,6 +113,19 @@ never hide a failure to make CI pass.
   Stage 3 pytest output from `-q` to `-v`; next push should auto-trigger the
   cppyy cross-platform workflow, and the windows-2022 Stage 3 log should name
   the last test printed before exit 127.
+- 2026-07-02 (Codex): pushed `8bb77f1e`, run
+  https://github.com/Legend101Zz/brian2/actions/runs/28611479444. Cancelled
+  redundant push runs `28611479511`, `28611479462`, and `28611479501` via the
+  Actions API. Results: ubuntu-latest passed; macos-latest and windows-latest
+  failed before Brian2 as expected; windows-2022 still passed install, Stage 1,
+  and Stage 2, then hard-crashed in Stage 3 with exit 127. The `-v` diagnostic
+  narrowed the crash to `test_synapses.py`: the log showed
+  `test_synapses.py .` followed by four more passing dots before exit 127.
+  Local pytest collection order for the same marker expression makes the next
+  selected test `test_connection_string_deterministic_full_custom`, but Brian2's
+  base pytest argv already includes `--quiet`, so `-v` did not print full node
+  IDs. Updating the diagnostic to `-vv` for one more run to get direct node-id
+  evidence before treating Task 1 as complete.
 - 2026-07-02 (Claude handoff): workflow + smoke script built, pushed
   (28aaf42b, 3989032b). Run 1 failed on setuptools_scm/shallow clone (fixed).
   Run 2 produced the state table above.
