@@ -6,6 +6,57 @@
 **Workflow:** `.github/workflows/cppyy-cross-platform.yml`
 **Smoke script:** `dev/continuous-integration/cppyy_smoke_test.py`
 
+## Final validation result
+
+Latest run:
+https://github.com/Legend101Zz/brian2/actions/runs/28614981836
+
+| OS | Verdict | Evidence |
+| --- | --- | --- |
+| `ubuntu-latest` | green | Stage 1/2/3 all succeeded. Stage 3: `275 passed, 17 skipped` in job `84856470910`. |
+| `macos-latest` | green | Stage 1/2/3 all succeeded. Stage 3: `275 passed, 17 skipped` in job `84856471033`. |
+| `windows-2022` | green | Windows install workaround succeeded, Stage 1/2/3 all succeeded. Stage 3: `274 passed, 18 skipped, 483 deselected`; the previously crashing tests `test_connection_string_deterministic_full_custom`, `test_synapse_generator_out_of_range`, `test_synapse_generator_fixed_random_error1`, and `test_synapse_generator_fixed_random_error2` all passed in job `84856470880`. |
+| `windows-latest` | red, upstream/toolchain layer | Stage 1 failed before Brian2. VS 2026/MSVC 14.51 headers are too new for the current cppyy/Cling stack: the log includes `__builtin_verbose_trap` undeclared in MSVC STL headers and then DLL initialization failure. Stage 2/3 were skipped in job `84856470919`. |
+
+Conclusion: the cppyy backend is proven on Linux, macOS, and Windows Server
+2022 with the pinned Windows install workaround. `windows-latest` is not a
+Brian2 backend failure; it is a forward-compatibility probe against the newest
+MSVC image.
+
+## PR comment draft
+
+For PR #1769:
+
+```markdown
+I validated the cppyy runtime backend with a staged GitHub Actions matrix on the fork:
+
+Run: https://github.com/Legend101Zz/brian2/actions/runs/28614981836
+
+Results:
+
+| OS | Result | Notes |
+| --- | --- | --- |
+| ubuntu-latest | PASS | install, bare cppyy JIT, Brian2 smoke simulation, and cppyy test subset all passed (`275 passed, 17 skipped`). |
+| macos-latest | PASS | install, bare cppyy JIT, Brian2 smoke simulation, and cppyy test subset all passed (`275 passed, 17 skipped`). |
+| windows-2022 | PASS | Windows workaround install succeeded, bare cppyy JIT passed, Brian2 smoke simulation passed, and cppyy test subset passed (`274 passed, 18 skipped, 483 deselected`). |
+| windows-latest | FAIL at Stage 1 | This is the Server 2025 / VS 2026 forward-compat image. Failure happens before Brian2: Cling cannot parse the current MSVC 14.51 STL headers (`__builtin_verbose_trap` undeclared), followed by DLL initialization failure. Stage 2/3 are skipped. |
+
+The Windows 2022 install recipe used in the passing job is:
+
+1. Put MSVC on PATH with `ilammy/msvc-dev-cmd`.
+2. Install the pinned cppyy stack in layers:
+   `cppyy-cling==6.32.8`, `cppyy-backend==1.15.3`, `CPyCppyy==1.13.0`, `cppyy==3.5.0`, using `--no-deps --no-build-isolation` where needed as in the workflow.
+
+During validation, Windows 2022 exposed cppyy/MSVC hard crashes when generated C++ threw exception paths back through cppyy. I fixed those by prechecking the relevant synapse-generator errors in Python before codegen:
+
+- constant out-of-range generator target, e.g. `j="20"`
+- range-generated out-of-range target, e.g. `j="k for k in range(0, N_post*2)"`
+- result-index-dependent post conditions that require an invalid post index before the condition can be evaluated
+- fixed-size `sample(...)` with impossible sample sizes, e.g. `sample(N_post, size=i+4)` or negative sizes
+
+So the supported statement should be: cppyy backend works on Linux, macOS, and Windows Server 2022 / VS 2022 with the documented pinned install workaround. The current `windows-latest` image is blocked at the upstream cppyy/Cling vs VS 2026 toolchain layer, not by Brian2 backend code.
+```
+
 ## Purpose
 
 Produce hard, per-OS evidence for the PR discussion: either the cppyy backend

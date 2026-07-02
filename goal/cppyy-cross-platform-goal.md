@@ -59,26 +59,26 @@ Do not confuse the two.
       `additional_args=["--tb=short", "-v"]`, commit + push (auto-triggers
       run), read the windows-2022 log — the last test name printed before
       exit 127 is the culprit.
-- [ ] 2. Fix that test's crash in the backend
+- [x] 2. Fix that test's crash in the backend
       (`brian2/codegen/runtime/cppyy_rt/`, `cppyy_generator.py`, templates)
       or, if upstream-unfixable, add a documented Windows-only skip for that
       single test, justified by the crash log. Suspects: 32-bit `long` on
       Win64 (macOS needed `long` template specializations, commit e29a0e81),
       `long double`, MSVC-only template/JIT quirks. Ubuntu passes the same
       subset, so it's Windows-specific.
-- [ ] 3. Re-run until windows-2022 is fully green end-to-end.
-- [ ] 4. macos-latest Stage 1: try selecting an older Xcode on the runner
+- [x] 3. Re-run until windows-2022 is fully green end-to-end.
+- [x] 4. macos-latest Stage 1: try selecting an older Xcode on the runner
       (`ls /Applications | grep Xcode` in a debug step, then
       `sudo xcode-select -s /Applications/Xcode_<older>.app` before the cppyy
       install), and/or check whether newer cppyy/cppyy-cling releases bundle
       a newer clang. If unfixable, document as upstream with log excerpt.
-- [ ] 5. windows-latest (VS 2026) is a forward-compat probe: fix if cheap,
+- [x] 5. windows-latest (VS 2026) is a forward-compat probe: fix if cheap,
       otherwise document "unsupported by current cppyy (Cling clang 16)".
-- [ ] 6. When the matrix is final: update
+- [x] 6. When the matrix is final: update
       `cppyy_optimization_work/cppyy_gha_validation_plan.md` with the results
       table + run links, and draft the PR #1769 comment (what works, what
       fails, why, minimal Windows install recipe).
-- [ ] 7. Only if windows-2022 ends fully green: review + commit the prepared
+- [x] 7. Only if windows-2022 ends fully green: review + commit the prepared
       uncommitted `.github/workflows/testsuite.yml` change that ports the
       Windows cppyy install into the main suite.
 
@@ -188,6 +188,31 @@ never hide a failure to make CI pass.
   paths complete without the JIT exception warning. Next step: commit, push,
   dispatch cppyy workflow again, and inspect whether windows-2022 Stage 3 gets
   past `test_synapse_generator_fixed_random_error1`.
+- 2026-07-02 (Codex): pushed `6ecb12d3`, manually dispatched
+  https://github.com/Legend101Zz/brian2/actions/runs/28614981836, and
+  cancelled redundant push workflows `28614962067`, `28614961375`, and
+  `28614961373`. Final matrix result: `ubuntu-latest` green with Stage 3
+  `275 passed, 17 skipped`; `macos-latest` green with Stage 3 `275 passed,
+  17 skipped`; `windows-2022` green end-to-end with Stage 3 `274 passed,
+  18 skipped, 483 deselected`; `windows-latest` still fails at Stage 1 before
+  Brian2 on VS 2026/MSVC 14.51 headers (`__builtin_verbose_trap` undeclared,
+  then DLL initialization failure), so Stage 2/3 are skipped there. The
+  windows-2022 log explicitly shows the previously crashing generator tests
+  passing, including `test_synapse_generator_out_of_range`,
+  `test_synapse_generator_fixed_random_error1`, and
+  `test_synapse_generator_fixed_random_error2`. Updated
+  `cppyy_optimization_work/cppyy_gha_validation_plan.md` with the final
+  results table and a PR #1769 comment draft. Task 7 remains: review and
+  commit the held-back `testsuite.yml` Windows cppyy install change if it is
+  still the desired follow-up.
+- 2026-07-02 (Codex): reviewed the held-back `.github/workflows/testsuite.yml`
+  change after the green windows-2022 matrix. It ports the same proven shape
+  into the main suite for non-standalone Windows jobs: set up MSVC with
+  `ilammy/msvc-dev-cmd`, install the pinned cppyy stack layer-by-layer with
+  `--no-deps --no-build-isolation --force-reinstall`, and log an explicit
+  cppyy import check so skipped/available behavior is visible. Also keeps the
+  non-Windows runtime-only cppyy install and fixes the Windows GSL preference
+  path quoting. Committing this together with the final validation docs.
 - 2026-07-02 (Claude handoff): workflow + smoke script built, pushed
   (28aaf42b, 3989032b). Run 1 failed on setuptools_scm/shallow clone (fixed).
   Run 2 produced the state table above.
