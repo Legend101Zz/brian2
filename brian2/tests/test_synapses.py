@@ -376,6 +376,39 @@ def test_connection_generator_constant_index_prechecked(monkeypatch):
     assert exc_isinstance(exc, IndexError)
 
 
+def test_connection_generator_range_index_prechecked(monkeypatch):
+    G = NeuronGroup(16, "")
+    G2 = NeuronGroup(4, "")
+    S = Synapses(G, G2)
+
+    def fail_create_runner_codeobj(*args, **kwargs):
+        raise AssertionError("out-of-range generator indices should be prechecked")
+
+    monkeypatch.setattr(
+        "brian2.synapses.synapses.create_runner_codeobj", fail_create_runner_codeobj
+    )
+
+    with pytest.raises(BrianObjectException) as exc:
+        S.connect(j="k for k in range(0, N_post*2)")
+    assert exc_isinstance(exc, IndexError)
+
+
+def test_connection_generator_post_condition_index_prechecked(monkeypatch):
+    G = NeuronGroup(16, "v : 1")
+    S = Synapses(G, G)
+
+    def fail_create_runner_codeobj(*args, **kwargs):
+        raise AssertionError("out-of-range post conditions should be prechecked")
+
+    monkeypatch.setattr(
+        "brian2.synapses.synapses.create_runner_codeobj", fail_create_runner_codeobj
+    )
+
+    with pytest.raises(BrianObjectException) as exc:
+        S.connect(j="i+k for k in range(0, 5) if i <= N_post-5 and v_post >= 0")
+    assert exc_isinstance(exc, IndexError)
+
+
 @pytest.mark.standalone_compatible
 def test_connection_string_deterministic_multiple_and():
     # In Brian versions 2.1.0-2.1.2, this fails on the numpy target

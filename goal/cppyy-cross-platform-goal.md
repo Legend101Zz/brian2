@@ -149,6 +149,25 @@ never hide a failure to make CI pass.
   `python -m pytest brian2/tests/test_synapses.py::test_connection_generator_constant_index_prechecked -q`
   and a direct cppyy-target call to
   `test_connection_string_deterministic_full_custom()`.
+- 2026-07-02 (Codex): pushed `953f8c4a`, manually dispatched
+  https://github.com/Legend101Zz/brian2/actions/runs/28613008288 because
+  backend-only changes do not match the cppyy workflow's push paths. The
+  windows-2022 job `84849867606` proved the previous crasher fixed:
+  `test_connection_string_deterministic_full_custom` and the new
+  constant-index regression both passed under Stage 3. The run then crashed
+  later with exit 127 at
+  `brian2/tests/test_synapses.py::test_synapse_generator_out_of_range`, again
+  on an intentional out-of-range synapse-generator path. Local cppyy showed the
+  same class of issue as before: C++ JIT `IndexError` paths emitted
+  `Warning: uncaught exception in JIT is rethrown` on this test. Added focused
+  failing regressions for range-based out-of-range generator indices and
+  result-index-dependent post conditions, then broadened the Python-side
+  generator precheck to infer simple integer result-index ranges before codegen.
+  Local checks now pass for the constant, range, post-condition, and original
+  `test_synapse_generator_out_of_range` cases, and direct cppyy-target calls to
+  both Windows-crashing test functions complete without the JIT exception
+  warning. Next step: commit, push, dispatch cppyy workflow again, and inspect
+  the new windows-2022 Stage 3 log.
 - 2026-07-02 (Claude handoff): workflow + smoke script built, pushed
   (28aaf42b, 3989032b). Run 1 failed on setuptools_scm/shallow clone (fixed).
   Run 2 produced the state table above.

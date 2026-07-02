@@ -2100,8 +2100,8 @@ class Synapses(Group):
             if var in identifiers:
                 raise ValueError(f"The connect statement cannot refer to '{var}'.")
 
-        if self._precheck_constant_generator_index(
-            parsed, over_presynaptic, skip_if_invalid
+        if self._precheck_generator_index(
+            parsed, over_presynaptic, skip_if_invalid, namespace
         ):
             return
 
@@ -2279,27 +2279,37 @@ class Synapses(Group):
             if isinstance(codeobj, CppyyCodeObject):
                 self._update_synapse_numbers(old_num_synapses)
 
-    def _precheck_constant_generator_index(
-        self, parsed, over_presynaptic, skip_if_invalid
+    def _precheck_generator_index(
+        self, parsed, over_presynaptic, skip_if_invalid, namespace
     ):
-        if parsed["if_expression"] != "True":
-            return False
-
-        try:
-            element = ast.literal_eval(parsed["element"])
-        except (ValueError, SyntaxError):
-            return False
-
-        if isinstance(element, bool) or not isinstance(element, numbers.Integral):
-            return False
-
         result_size = len(self.target) if over_presynaptic else len(self.source)
         result_name = "j" if over_presynaptic else "i"
-        if 0 <= element < result_size:
+        element_interval = self._generator_index_interval(parsed, over_presynaptic)
+
+        if element_interval is None:
             return False
 
-        if skip_if_invalid:
+        low, high = element_interval
+        if 0 <= low and high < result_size:
+            return False
+
+        if not self._generator_condition_requires_valid_result_index(
+            parsed, over_presynaptic, namespace
+        ):
+            return False
+
+        if skip_if_invalid and (high < 0 or low >= result_size):
             return True
+
+        if skip_if_invalid:
+            return False
+
+        if low < 0:
+            element = low
+        elif low < result_size <= high:
+            element = result_size
+        else:
+            element = high
 
         index_error = IndexError(
             f"index {result_name}={element} outside allowed range from 0 to "
@@ -2309,6 +2319,118 @@ class Synapses(Group):
             f"Exception during synapse creation for '{self.name}'.\n",
             self,
         ) from index_error
+
+    def _generator_condition_requires_valid_result_index(
+        self, parsed, over_presynaptic, namespace
+    ):
+        if parsed["if_expression"] == "True":
+            return True
+
+        target_idx = "_postsynaptic_idx" if over_presynaptic else "_presynaptic_idx"
+        additional_indices = {
+            parsed["inner_variable"]: "_iterator_idx",
+            "_vectorisation_idx": "_iterator_idx",
+        }
+        deps = self._expression_index_dependence(
+            parsed["if_expression"],
+            namespace=namespace,
+            additional_indices=additional_indices,
+        )
+        return target_idx in deps
+
+    def _generator_index_interval(self, parsed, over_presynaptic):
+        env = {
+            "N_pre": (len(self.source), len(self.source)),
+            "N_post": (len(self.target), len(self.target)),
+        }
+
+        outer_index = "i" if over_presynaptic else "j"
+        outer_size = len(self.source) if over_presynaptic else len(self.target)
+        env[outer_index] = (0, outer_size - 1)
+
+        if parsed["iterator_func"] == "range":
+            inner_interval = self._range_iterator_interval(parsed["iterator_kwds"], env)
+            if inner_interval is None:
+                return None
+            env[parsed["inner_variable"]] = inner_interval
+
+        return self._integer_expr_interval(parsed["element"], env)
+
+    def _range_iterator_interval(self, kwds, env):
+        low_interval = self._integer_expr_interval(kwds["low"], env)
+        high_interval = self._integer_expr_interval(kwds["high"], env)
+        step_interval = self._integer_expr_interval(kwds["step"], env)
+
+        if low_interval is None or high_interval is None or step_interval is None:
+            return None
+
+        step_low, step_high = step_interval
+        if step_low != step_high or step_low == 0:
+            return None
+
+        low, high = low_interval[0], high_interval[1]
+        step = step_low
+        if step > 0:
+            if high <= low:
+                return None
+            return low, high - 1
+
+        low, high = low_interval[1], high_interval[0]
+        if low <= high:
+            return None
+        return high + 1, low
+
+    def _integer_expr_interval(self, expr, env):
+        try:
+            node = ast.parse(expr, mode="eval").body
+        except SyntaxError:
+            return None
+        return self._integer_ast_interval(node, env)
+
+    def _integer_ast_interval(self, node, env):
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(
+                node.value, numbers.Integral
+            ):
+                return None
+            return int(node.value), int(node.value)
+
+        if isinstance(node, ast.Name):
+            return env.get(node.id)
+
+        if isinstance(node, ast.UnaryOp):
+            interval = self._integer_ast_interval(node.operand, env)
+            if interval is None:
+                return None
+            if isinstance(node.op, ast.UAdd):
+                return interval
+            if isinstance(node.op, ast.USub):
+                return -interval[1], -interval[0]
+            return None
+
+        if isinstance(node, ast.BinOp):
+            left = self._integer_ast_interval(node.left, env)
+            right = self._integer_ast_interval(node.right, env)
+            if left is None or right is None:
+                return None
+
+            left_low, left_high = left
+            right_low, right_high = right
+            if isinstance(node.op, ast.Add):
+                return left_low + right_low, left_high + right_high
+            if isinstance(node.op, ast.Sub):
+                return left_low - right_high, left_high - right_low
+            if isinstance(node.op, ast.Mult):
+                products = [
+                    left_low * right_low,
+                    left_low * right_high,
+                    left_high * right_low,
+                    left_high * right_high,
+                ]
+                return min(products), max(products)
+            return None
+
+        return None
 
     def _check_parsed_synapses_generator(self, parsed, namespace):
         """
