@@ -62,7 +62,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          # Full history + tags: brian2's version comes from setuptools_scm.
+          # A shallow clone makes it fall back to 'unknown', which packaging
+          # rejects and `pip install .[test]` fails on every OS.
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Fetch tags from main repository
+        run: |
+          git remote add upstream https://github.com/brian-team/brian2 && \
+          git fetch --tags --force upstream
 
       - name: Set up Python 3.12
         id: python
