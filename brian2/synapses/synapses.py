@@ -2,6 +2,7 @@
 Module providing the `Synapses` class and related helper classes/functions.
 """
 
+import ast
 import functools
 import numbers
 import re
@@ -13,7 +14,11 @@ import numpy as np
 
 from brian2.codegen.codeobject import create_runner_codeobj
 from brian2.codegen.translation import get_identifiers_recursively
-from brian2.core.base import device_override, weakproxy_with_fallback
+from brian2.core.base import (
+    BrianObjectException,
+    device_override,
+    weakproxy_with_fallback,
+)
 from brian2.core.namespace import get_local_namespace
 from brian2.core.spikesource import SpikeSource
 from brian2.core.variables import DynamicArrayVariable, Variables
@@ -2095,6 +2100,11 @@ class Synapses(Group):
             if var in identifiers:
                 raise ValueError(f"The connect statement cannot refer to '{var}'.")
 
+        if self._precheck_constant_generator_index(
+            parsed, over_presynaptic, skip_if_invalid
+        ):
+            return
+
         template_kwds, needed_variables = self._get_multisynaptic_indices()
 
         template_kwds["_registered_variables"] = self._registered_variables
@@ -2268,6 +2278,37 @@ class Synapses(Group):
 
             if isinstance(codeobj, CppyyCodeObject):
                 self._update_synapse_numbers(old_num_synapses)
+
+    def _precheck_constant_generator_index(
+        self, parsed, over_presynaptic, skip_if_invalid
+    ):
+        if parsed["if_expression"] != "True":
+            return False
+
+        try:
+            element = ast.literal_eval(parsed["element"])
+        except (ValueError, SyntaxError):
+            return False
+
+        if isinstance(element, bool) or not isinstance(element, numbers.Integral):
+            return False
+
+        result_size = len(self.target) if over_presynaptic else len(self.source)
+        result_name = "j" if over_presynaptic else "i"
+        if 0 <= element < result_size:
+            return False
+
+        if skip_if_invalid:
+            return True
+
+        index_error = IndexError(
+            f"index {result_name}={element} outside allowed range from 0 to "
+            f"{result_size - 1}"
+        )
+        raise BrianObjectException(
+            f"Exception during synapse creation for '{self.name}'.\n",
+            self,
+        ) from index_error
 
     def _check_parsed_synapses_generator(self, parsed, namespace):
         """

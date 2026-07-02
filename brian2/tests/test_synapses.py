@@ -360,6 +360,22 @@ def test_connection_string_deterministic_full_custom():
     _compare(S2, expected_custom)
 
 
+def test_connection_generator_constant_index_prechecked(monkeypatch):
+    G = NeuronGroup(17, "")
+    S = Synapses(G, G)
+
+    def fail_create_runner_codeobj(*args, **kwargs):
+        raise AssertionError("constant out-of-range indices should be prechecked")
+
+    monkeypatch.setattr(
+        "brian2.synapses.synapses.create_runner_codeobj", fail_create_runner_codeobj
+    )
+
+    with pytest.raises(BrianObjectException) as exc:
+        S.connect(j="20")
+    assert exc_isinstance(exc, IndexError)
+
+
 @pytest.mark.standalone_compatible
 def test_connection_string_deterministic_multiple_and():
     # In Brian versions 2.1.0-2.1.2, this fails on the numpy target

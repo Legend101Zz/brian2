@@ -53,7 +53,7 @@ Do not confuse the two.
 
 ## Tasks
 
-- [ ] 1. Identify the windows-2022 Stage-3 crasher: in
+- [x] 1. Identify the windows-2022 Stage-3 crasher: in
       `dev/continuous-integration/cppyy_smoke_test.py` change
       `additional_args=["--tb=short", "-q"]` to
       `additional_args=["--tb=short", "-v"]`, commit + push (auto-triggers
@@ -126,6 +126,29 @@ never hide a failure to make CI pass.
   base pytest argv already includes `--quiet`, so `-v` did not print full node
   IDs. Updating the diagnostic to `-vv` for one more run to get direct node-id
   evidence before treating Task 1 as complete.
+- 2026-07-02 (Codex): pushed `340ad638`, run
+  https://github.com/Legend101Zz/brian2/actions/runs/28612004230. Cancelled
+  redundant push runs `28612004025`, `28612004121`, and `28612004233`.
+  windows-2022 job `84846507166` again passed install, Stage 1, and Stage 2,
+  then hard-crashed in Stage 3 with exit 127. The `-vv` log directly names the
+  culprit: `brian2/tests/test_synapses.py::test_connection_string_deterministic_full_custom`
+  was printed at `2026-07-02T18:25:04Z`, immediately followed by
+  `Process completed with exit code 127`. Task 1 complete; Task 2 starts from
+  this test.
+- 2026-07-02 (Codex): traced
+  `test_connection_string_deterministic_full_custom`. The valid custom
+  connections complete locally under cppyy; the test's later intentional
+  invalid call `S2.connect(j="20")` is the C++ exception path. Local cppyy emits
+  `Warning: uncaught exception in JIT is rethrown` at that exact statement and
+  then wraps it as `BrianObjectException` caused by `IndexError`; windows-2022
+  appears to hard-crash instead of safely rethrowing the JIT exception. Added a
+  regression test proving constant out-of-range generator indices are rejected
+  before `create_runner_codeobj`, then added a Python-side precheck in
+  `Synapses._add_synapses_generator` for unconditional constant integer
+  generator targets. Local checks passed:
+  `python -m pytest brian2/tests/test_synapses.py::test_connection_generator_constant_index_prechecked -q`
+  and a direct cppyy-target call to
+  `test_connection_string_deterministic_full_custom()`.
 - 2026-07-02 (Claude handoff): workflow + smoke script built, pushed
   (28aaf42b, 3989032b). Run 1 failed on setuptools_scm/shallow clone (fixed).
   Run 2 produced the state table above.
