@@ -120,7 +120,7 @@ def run_suite():
             test_in_parallel=in_parallel,
             reset_preferences=True,
             test_GSL=False,
-            additional_args=["--tb=short", "-q"],
+            additional_args=["--tb=short", "-v"],
         )
     )
 
