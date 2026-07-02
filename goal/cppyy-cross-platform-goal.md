@@ -168,6 +168,26 @@ never hide a failure to make CI pass.
   both Windows-crashing test functions complete without the JIT exception
   warning. Next step: commit, push, dispatch cppyy workflow again, and inspect
   the new windows-2022 Stage 3 log.
+- 2026-07-02 (Codex): pushed `e8064326`, manually dispatched
+  https://github.com/Legend101Zz/brian2/actions/runs/28614193841, and
+  cancelled redundant push workflows `28614173956`, `28614174046`, and
+  `28614173978`. The windows-2022 log showed the new range/post-condition
+  regressions and `test_synapse_generator_out_of_range` all passing; Stage 3
+  advanced to 94% and then hard-crashed at
+  `brian2/tests/test_synapses.py::test_synapse_generator_fixed_random_error1`.
+  Ubuntu uncovered a real false positive from the interval precheck:
+  `test_subgroup.py::test_synapse_creation_generator_complex_ranges` failed
+  because `j="i+k for k in range(N_post-i)"` couples the outer index and
+  iterator range, but the precheck treated them independently and invented an
+  impossible `j=10`. Tightened the precheck to decline outer-index-dependent
+  range bounds, then added a fixed-size `sample(...)` precheck for impossible
+  sample sizes such as `sample(N_post, size=i+4)` and `sample(N_post,
+  size=3-i)`. Local focused pytest now passes the subgroup regression, all
+  generator precheck tests, `test_synapse_generator_out_of_range`, and both
+  fixed-random error tests. Direct cppyy-target calls to the guarded exception
+  paths complete without the JIT exception warning. Next step: commit, push,
+  dispatch cppyy workflow again, and inspect whether windows-2022 Stage 3 gets
+  past `test_synapse_generator_fixed_random_error1`.
 - 2026-07-02 (Claude handoff): workflow + smoke script built, pushed
   (28aaf42b, 3989032b). Run 1 failed on setuptools_scm/shallow clone (fixed).
   Run 2 produced the state table above.

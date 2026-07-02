@@ -409,6 +409,28 @@ def test_connection_generator_post_condition_index_prechecked(monkeypatch):
     assert exc_isinstance(exc, IndexError)
 
 
+def test_connection_generator_sample_size_prechecked(monkeypatch):
+    G = NeuronGroup(5, "")
+    G2 = NeuronGroup(7, "")
+
+    def fail_create_runner_codeobj(*args, **kwargs):
+        raise AssertionError("invalid fixed sample sizes should be prechecked")
+
+    monkeypatch.setattr(
+        "brian2.synapses.synapses.create_runner_codeobj", fail_create_runner_codeobj
+    )
+
+    S1 = Synapses(G, G2)
+    with pytest.raises(BrianObjectException) as exc:
+        S1.connect(j="k for k in sample(N_post, size=i+4)")
+    assert exc_isinstance(exc, IndexError)
+
+    S2 = Synapses(G, G2)
+    with pytest.raises(BrianObjectException) as exc:
+        S2.connect(j="k for k in sample(N_post, size=3-i)")
+    assert exc_isinstance(exc, IndexError)
+
+
 @pytest.mark.standalone_compatible
 def test_connection_string_deterministic_multiple_and():
     # In Brian versions 2.1.0-2.1.2, this fails on the numpy target

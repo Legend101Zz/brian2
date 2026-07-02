@@ -2282,6 +2282,14 @@ class Synapses(Group):
     def _precheck_generator_index(
         self, parsed, over_presynaptic, skip_if_invalid, namespace
     ):
+        if not skip_if_invalid:
+            sample_size_error = self._fixed_sample_size_error(parsed, over_presynaptic)
+            if sample_size_error is not None:
+                raise BrianObjectException(
+                    f"Exception during synapse creation for '{self.name}'.\n",
+                    self,
+                ) from sample_size_error
+
         result_size = len(self.target) if over_presynaptic else len(self.source)
         result_name = "j" if over_presynaptic else "i"
         element_interval = self._generator_index_interval(parsed, over_presynaptic)
@@ -2320,6 +2328,30 @@ class Synapses(Group):
             self,
         ) from index_error
 
+    def _fixed_sample_size_error(self, parsed, over_presynaptic):
+        if parsed["iterator_func"] != "sample":
+            return None
+        if parsed["iterator_kwds"]["sample_size"] != "fixed":
+            return None
+
+        env = self._generator_interval_env(over_presynaptic)
+        population_size = self._range_population_size(parsed["iterator_kwds"], env)
+        size_interval = self._integer_expr_interval(
+            parsed["iterator_kwds"]["size"], env
+        )
+        if population_size is None or size_interval is None:
+            return None
+
+        size_low, size_high = size_interval
+        if size_low < 0:
+            return IndexError(f"Requested sample size {size_low} is negative.")
+        if size_high > population_size:
+            return IndexError(
+                f"Requested sample size {size_high} is bigger than the "
+                f"population size {population_size}."
+            )
+        return None
+
     def _generator_condition_requires_valid_result_index(
         self, parsed, over_presynaptic, namespace
     ):
@@ -2338,7 +2370,7 @@ class Synapses(Group):
         )
         return target_idx in deps
 
-    def _generator_index_interval(self, parsed, over_presynaptic):
+    def _generator_interval_env(self, over_presynaptic):
         env = {
             "N_pre": (len(self.source), len(self.source)),
             "N_post": (len(self.target), len(self.target)),
@@ -2347,14 +2379,46 @@ class Synapses(Group):
         outer_index = "i" if over_presynaptic else "j"
         outer_size = len(self.source) if over_presynaptic else len(self.target)
         env[outer_index] = (0, outer_size - 1)
+        return env
+
+    def _generator_index_interval(self, parsed, over_presynaptic):
+        env = self._generator_interval_env(over_presynaptic)
+        outer_index = "i" if over_presynaptic else "j"
 
         if parsed["iterator_func"] == "range":
+            if any(
+                outer_index in get_identifiers(expr)
+                for expr in parsed["iterator_kwds"].values()
+                if expr is not None
+            ):
+                return None
             inner_interval = self._range_iterator_interval(parsed["iterator_kwds"], env)
             if inner_interval is None:
                 return None
             env[parsed["inner_variable"]] = inner_interval
 
         return self._integer_expr_interval(parsed["element"], env)
+
+    def _range_population_size(self, kwds, env):
+        low_interval = self._integer_expr_interval(kwds["low"], env)
+        high_interval = self._integer_expr_interval(kwds["high"], env)
+        step_interval = self._integer_expr_interval(kwds["step"], env)
+
+        if low_interval is None or high_interval is None or step_interval is None:
+            return None
+
+        low_start, low_end = low_interval
+        high_start, high_end = high_interval
+        step_start, step_end = step_interval
+        if low_start != low_end or high_start != high_end or step_start != step_end:
+            return None
+
+        low, high, step = low_start, high_start, step_start
+        if step == 0:
+            return None
+        if step > 0:
+            return max(0, (high - low - 1) // step + 1)
+        return max(0, (low - high - 1) // (-step) + 1)
 
     def _range_iterator_interval(self, kwds, env):
         low_interval = self._integer_expr_interval(kwds["low"], env)
